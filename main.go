@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -24,39 +25,49 @@ const (
 	hextable  = "0123456789abcdef"
 )
 
+var debuggerSocket = flag.String("socket", "localhost:6000", "ADB debugger socket")
+var kaiosAppPath = flag.String("path", "/path/to/kaios/app", "KaiOS app path")
+var verboseFlag = flag.Bool("verbose", false, "Verbose output")
+var launchFlag = flag.Bool("launch", false, "Launch After Install")
+
 func main() {
-	fmt.Println("KaiDeploy by zjyl1994\nhttps://github.com/zjyl1994/kaideploy\n=============")
-	if len(os.Args) != 3 {
-		fmt.Println("Example: kaideploy localhost:6000 /path/to/kaios/app")
-		os.Exit(1)
-	}
-	debuggerSocket := os.Args[1]
-	kaiosAppPath := os.Args[2]
+	flag.Parse()
+	fmt.Println("KaiDeploy by zjyl1994\nhttps://github.com/zjyl1994/kaideploy")
 	// package zip in memory
-	fmt.Println(">> packing app in zip.")
-	packagedAppZip, err := zipToMem(kaiosAppPath)
+	if *verboseFlag {
+		fmt.Println("=============\n>> packing app in zip.")
+	}
+	packagedAppZip, err := zipToMem(*kaiosAppPath)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	fmt.Println("ZIP_LENGTH::", len(packagedAppZip))
-	fmt.Println(">> zip pack success.")
+	if *verboseFlag {
+		fmt.Println("ZIP_LENGTH::", len(packagedAppZip))
+		fmt.Println(">> zip pack success.")
+	}
 	// install KaiOS app
-	err = installToPhone(debuggerSocket, packagedAppZip)
+	err = installToPhone(*debuggerSocket, packagedAppZip, *launchFlag)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	fmt.Println(">> all done.")
+	if *verboseFlag {
+		fmt.Println(">> all done.")
+	} else {
+		fmt.Println("deploy done.")
+	}
 }
 
-func installToPhone(address string, packagedAppZip []byte) error {
+func installToPhone(address string, packagedAppZip []byte, launchAfterInstall bool) error {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	fmt.Println("opening debugger socket")
+	if *verboseFlag {
+		fmt.Println("opening debugger socket")
+	}
 	bufReader := bufio.NewReader(conn)
 	// read device info
 
@@ -72,7 +83,9 @@ func installToPhone(address string, packagedAppZip []byte) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("listTabs sent")
+	if *verboseFlag {
+		fmt.Println("listTabs sent")
+	}
 	// read webappsActor
 
 	sJSON, err = readJSON(bufReader)
@@ -80,7 +93,9 @@ func installToPhone(address string, packagedAppZip []byte) error {
 		return err
 	}
 	webappsActor := sJSON.Get("webappsActor").MustString()
-	fmt.Println("webappsActor:", webappsActor)
+	if *verboseFlag {
+		fmt.Println("webappsActor:", webappsActor)
+	}
 	// send uploadPackage
 	sJSON = simplejson.New()
 	sJSON.Set("to", webappsActor)
@@ -89,7 +104,9 @@ func installToPhone(address string, packagedAppZip []byte) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("uploadPackage sent")
+	if *verboseFlag {
+		fmt.Println("uploadPackage sent")
+	}
 	// read actor
 
 	sJSON, err = readJSON(bufReader)
@@ -97,7 +114,9 @@ func installToPhone(address string, packagedAppZip []byte) error {
 		return err
 	}
 	uploadActor := sJSON.Get("actor").MustString()
-	fmt.Println("uploadActor:", uploadActor)
+	if *verboseFlag {
+		fmt.Println("uploadActor:", uploadActor)
+	}
 	// chunk send
 	zipChunk := make([]byte, chunkSize)
 	zipReader := bytes.NewReader(packagedAppZip)
@@ -119,17 +138,21 @@ func installToPhone(address string, packagedAppZip []byte) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("chunk sent")
+		if *verboseFlag {
+			fmt.Println("chunk sent")
+		}
 		// get response
 
 		sJSON, err = readJSON(bufReader)
 		if err != nil {
 			return err
 		}
-		writtenLen := sJSON.Get("written").MustInt()
-		fmt.Println("writtenLen:", writtenLen)
-		totalLen := sJSON.Get("_size").MustInt()
-		fmt.Println("totalLen:", totalLen)
+		if *verboseFlag {
+			writtenLen := sJSON.Get("written").MustInt()
+			totalLen := sJSON.Get("_size").MustInt()
+			fmt.Println("writtenLen:", writtenLen)
+			fmt.Println("totalLen:", totalLen)
+		}
 	}
 	// send upload done command
 	sJSON = simplejson.New()
@@ -139,7 +162,9 @@ func installToPhone(address string, packagedAppZip []byte) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("upload done sent")
+	if *verboseFlag {
+		fmt.Println("upload done sent")
+	}
 	// read resp
 
 	_, err = readJSON(bufReader)
@@ -156,7 +181,9 @@ func installToPhone(address string, packagedAppZip []byte) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("install cmd sent")
+	if *verboseFlag {
+		fmt.Println("install cmd sent")
+	}
 	// read install resp
 
 	sJSON, err = readJSON(bufReader)
@@ -164,9 +191,11 @@ func installToPhone(address string, packagedAppZip []byte) error {
 		return err
 	}
 	appId := sJSON.Get("appId").MustString()
-	fmt.Println("appId:", appId)
-	appPath := sJSON.Get("path").MustString()
-	fmt.Println("path:", appPath)
+	if *verboseFlag {
+		fmt.Println("appId:", appId)
+		appPath := sJSON.Get("path").MustString()
+		fmt.Println("path:", appPath)
+	}
 	// remove upload actor
 	sJSON = simplejson.New()
 	sJSON.Set("to", uploadActor)
@@ -175,7 +204,32 @@ func installToPhone(address string, packagedAppZip []byte) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("remove upload actor command sent")
+	if *verboseFlag {
+		fmt.Println("remove upload actor command sent")
+	}
+
+	sJSON, err = readJSON(bufReader)
+	if err != nil {
+		return err
+	}
+
+	if launchAfterInstall {
+		sJSON = simplejson.New()
+		sJSON.Set("to", webappsActor)
+		sJSON.Set("type", "launch")
+		sJSON.Set("manifestURL", `app://`+appId+`/manifest.webapp`)
+		err = writeJSON(conn, sJSON)
+		if err != nil {
+			return err
+		}
+		if *verboseFlag {
+			fmt.Println("launch command sent")
+		}
+		sJSON, err = readJSON(bufReader)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -210,7 +264,9 @@ func zipToMem(source string) (data []byte, err error) {
 		} else {
 			header.Method = zip.Deflate
 		}
-		fmt.Println(header.Name)
+		if *verboseFlag {
+			fmt.Println(header.Name)
+		}
 		writer, err := archive.CreateHeader(header)
 		if err != nil {
 			return err
