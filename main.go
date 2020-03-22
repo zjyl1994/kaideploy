@@ -32,10 +32,10 @@ var launchFlag = flag.Bool("launch", false, "Launch After Install")
 
 func main() {
 	flag.Parse()
-	fmt.Println("KaiDeploy by zjyl1994\nhttps://github.com/zjyl1994/kaideploy")
+	fmt.Println("KaiDeploy by zjyl1994")
 	// package zip in memory
 	if *verboseFlag {
-		fmt.Println("=============\n>> packing app in zip.")
+		fmt.Println("https://github.com/zjyl1994/kaideploy\n=============\n>> packing app in zip.")
 	}
 	packagedAppZip, err := zipToMem(*kaiosAppPath)
 	if err != nil {
@@ -236,6 +236,10 @@ func installToPhone(address string, packagedAppZip []byte, launchAfterInstall bo
 func zipToMem(source string) (data []byte, err error) {
 	buf := new(bytes.Buffer)
 	archive := zip.NewWriter(buf)
+	source, err = filepath.Abs(source)
+	if err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(source)
 	if err != nil {
 		return nil, err
@@ -264,6 +268,7 @@ func zipToMem(source string) (data []byte, err error) {
 		} else {
 			header.Method = zip.Deflate
 		}
+		header.Name = strings.TrimPrefix(header.Name, "/")
 		if *verboseFlag {
 			fmt.Println(header.Name)
 		}
