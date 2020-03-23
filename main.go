@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,25 +27,46 @@ const (
 )
 
 var debuggerSocket = flag.String("socket", "localhost:6000", "ADB debugger socket")
-var kaiosAppPath = flag.String("path", "/path/to/kaios/app", "KaiOS app path")
+var kaiosAppPath = flag.String("path", "app", "KaiOS app path")
 var verboseFlag = flag.Bool("verbose", false, "Verbose output")
 var launchFlag = flag.Bool("launch", false, "Launch After Install")
+var downloadFlag = flag.Bool("download", false, "Install online zip")
 
 func main() {
 	flag.Parse()
 	fmt.Println("KaiDeploy by zjyl1994")
 	// package zip in memory
 	if *verboseFlag {
-		fmt.Println("https://github.com/zjyl1994/kaideploy\n=============\n>> packing app in zip.")
+		fmt.Println("https://github.com/zjyl1994/kaideploy\n=============")
 	}
-	packagedAppZip, err := zipToMem(*kaiosAppPath)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	if *verboseFlag {
-		fmt.Println("ZIP_LENGTH::", len(packagedAppZip))
-		fmt.Println(">> zip pack success.")
+	var err error
+	var packagedAppZip []byte
+	if *downloadFlag {
+		if *verboseFlag {
+			fmt.Println(">> downloading online zip file.")
+		}
+		packagedAppZip, err = downloadToMem(*kaiosAppPath)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		if *verboseFlag {
+			fmt.Println("ZIP_LENGTH::", len(packagedAppZip))
+			fmt.Println(">> zip download success.")
+		}
+	} else {
+		if *verboseFlag {
+			fmt.Println(">> packing app in zip.")
+		}
+		packagedAppZip, err = zipToMem(*kaiosAppPath)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		if *verboseFlag {
+			fmt.Println("ZIP_LENGTH::", len(packagedAppZip))
+			fmt.Println(">> zip pack success.")
+		}
 	}
 	// install KaiOS app
 	err = installToPhone(*debuggerSocket, packagedAppZip, *launchFlag)
@@ -56,6 +78,21 @@ func main() {
 		fmt.Println(">> all done.")
 	} else {
 		fmt.Println("deploy done.")
+	}
+}
+
+func downloadToMem(url string) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	_, err = io.Copy(buf, resp.Body)
+	if err != nil {
+		return nil, err
+	} else {
+		return buf.Bytes(), nil
 	}
 }
 
